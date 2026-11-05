@@ -87,6 +87,11 @@ RB_UIF_TRANSFER is cleared. Handling follows WCH's CH572 COM example:
 
 ## Bridge and CMSIS-DAP
 
+On the first board (2026-11-04), probe-rs (`info`, and `read` of
+FLASH_OPTR through AP0) and OpenOCD (interface/cmsis-dap.cfg with
+target/stm32wlx.cfg, including `stm32l4x unlock`) worked through the
+bridge.
+
 - The UART's receive FIFO is 8 bytes, full in 0.7 ms at 115200, and a DAP
   command can run longer. `SwdIo::service` runs before every SWD transfer
   and inside delays, moving the FIFOs into rings and feeding the watchdog
@@ -103,6 +108,11 @@ RB_UIF_TRANSFER is cleared. Handling follows WCH's CH572 COM example:
   turnaround 1 with no forced data phase and ignores idle cycles, which is
   what probe-rs uses. No MS OS 2.0 descriptors: Windows would need WinUSB
   assigned by hand.
+- DAP_Info reports a packet size of 64, dap-rs's DAP2_PACKET_SIZE without
+  its usb-hs feature, which matches the endpoints. Its Capabilities byte
+  always sets bit 6, SWO streaming, even with no SWO (dap-rs 0.2
+  `src/dap.rs`), so OpenOCD prints "SWO streaming trace supported".
+  probe-rs looks for the SWO endpoint itself and is not misled.
 - SWD and nRESET float unless a session holds them: J2 shares the lines.
   They are released on DAP_Disconnect and also when USB drops out of the
   configured state, since a killed probe-rs never disconnects. nRESET is
@@ -110,6 +120,35 @@ RB_UIF_TRANSFER is cleared. Handling follows WCH's CH572 COM example:
   only valid for inputs, so pin readback of an output uses R32_PA_OUT.
 - The SWD clock rate is approximate and errs slow: the delay loop assumes
   2 cycles per iteration and no overhead.
+
+## WAIT retries stall USB (open)
+
+While a DAP command runs the bridge polls no USB; only `SwdIo::service`
+runs (watchdog and UART). probe-rs 0.31 sends DAP_TransferConfigure with
+wait_retry 0xFFFF and gives each USB transfer 1 s (DEFAULT_USB_TIMEOUT in
+probe-rs `src/probe/cmsisdap/commands/mod.rs`), and dap-rs's default
+`Swd::read` and `Swd::write`, which `swd.rs` does not override, retry a
+WAIT that many times: seconds per exhausted transfer, bit-banged at
+~1 MHz.
+
+- Symptom: probe-rs fails with "Error handling CMSIS-DAP command
+  Transfer / Timeout in USB communication" while the bridge still
+  retries. The late replies (05 01 02: Transfer, ack WAIT) stay queued,
+  one in EP3 IN and one in `dap_response`, so the next session fails with
+  "Could not determine a suitable packet size" (probe-rs's drain() reads
+  with 1 ms timeouts). Recovery: read EP3 IN with a long timeout, or
+  replug.
+- Seen once on the first board (2026-11-04), during probe-rs attach: a
+  WAIT on the DP CTRL/STAT read right after ABORT, with the Wio-E5's core
+  in lockup (RDP 1, DHCSR 0x03090000). It cleared on its own; later
+  identical runs were clean. AP1 was not involved: its FAULTs are the
+  harmless probe-rs info line that long-range-radio-rs
+  notes/build-flash.md explains.
+- Proposed fix: override `read` and `write` in `impl swd::Swd for
+  Swd<I>` (`src/swd.rs`) to stop retrying after a time budget (~100 ms)
+  and return AckWait.
+- Unexplained: once, the bridge refused an OUT packet for 30 s, longer
+  than one retry loop should take.
 
 ## IDs, permissions, flashing
 
