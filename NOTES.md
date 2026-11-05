@@ -5,8 +5,8 @@ D-/D+ on PA0/PA1, UART TX/RX on PA8/PA9 to the Wio-E5's USART2
 (PA3/PA2), SWD on PA5 (SWCLK) and PA7 (SWDIO), WIO-RST on PA6. Pin
 table: `src/hw.rs`. No BLE: that needs WCH's closed-source stack.
 
-Sources: the datasheet translation in `~/ch572d/ch572d_en.md`, and WCH's
-EVT (github.com/openwch/ch570: `CH572SFR.h`, `CH57x_sys.c` SetSysClock,
+Sources: the CH572 datasheet (CH572DS1, read in an English translation),
+and WCH's EVT (github.com/openwch/ch570: `CH572SFR.h`, `CH57x_sys.c` SetSysClock,
 `USB/Device/COM`). `src/regs.rs` uses the SFR header's names; all
 101 constants that have one were checked against it by script (0 mismatches);
 SysTick comes from `core_riscv.h` and datasheet 3.4.4.
@@ -286,8 +286,8 @@ order:
    1a86:55e0, and isp.py ends with "verified".
 4. `lsusb` shows 1209:0001; dmesg shows a ttyACM and no descriptor errors.
    D10 lights once configured (blinks at 1 Hz until then). With the
-   bridge up, the Wio-E5's bring-up continues in long-range-radio-rs
-   (`~/forest/long-range-radio-rs`), notes/board.md, First bring-up.
+   bridge up, the Wio-E5's bring-up continues in long-range-radio-rs:
+   [notes/board.md, First bring-up](https://github.com/tmpk13/long-range-radio-rs/blob/main/notes/board.md#first-bring-up).
 5. `mise run boot`, then `lsusb` for the WCH ISP device and
    `wchisp info`.
 
