@@ -1,6 +1,5 @@
 //! CH572D firmware entry: startup, then the bridge's polling loop.  See
-//! the library docs for what the bridge does and notes/ch572.md for how
-//! to flash it.
+//! the library docs for what the bridge does.
 
 #![no_std]
 #![no_main]

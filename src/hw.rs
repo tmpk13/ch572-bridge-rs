@@ -209,7 +209,7 @@ pub fn software_reset() -> ! {
     }
 }
 
-/// Restart into the ROM bootloader for USB ISP (wchisp).
+/// Restart into the ROM bootloader for USB ISP (isp.py).
 ///
 /// The datasheet's description of RB_SOFTWARE_RESET gives the condition:
 /// with RB_WDOG_INT_EN and RB_ROM_CODE_WE set, RB_ROM_DATA_WE clear and

@@ -1,0 +1,34 @@
+[tools]
+# Runs isp.py, the flasher, with pyusb in a throwaway env, and its tests
+# with pytest.
+pixi = "0.66.0"
+# Reads CH572D chip info and config (wchisp info); it cannot flash this chip
+# (isp.py).  CH570/CH572 support is only on main (0.3.0 predates it).
+"cargo:https://github.com/ch32-rs/wchisp" = "rev:553327eeeea9fdc30414f1e5c74d1ff14b228a26"
+
+[tasks.build]
+description = "Build the firmware (release) without flashing"
+run = "cargo build --release"
+
+[tasks.flash]
+description = "Build and flash the bridge with isp.py; waits 30 s for the ROM bootloader (blank chip at plug-in, or mise run boot)"
+run = "cargo run --release"
+
+[tasks.boot]
+description = "Restart a running bridge into the CH572D's ROM bootloader (1200 baud touch); PORT defaults to /dev/ttyACM0"
+run = 'stty -F "${PORT:-/dev/ttyACM0}" 1200'
+
+[tasks.test]
+description = "Run the host tests: USB driver, SWD and bridge against simulated hardware, and the isp.py flasher"
+run = [
+    'cargo test --lib --target "$(rustc -vV | sed -n "s/^host: //p")"',
+    "pixi exec -s python=3.12 -s pytest python -I -m pytest -q test_isp.py",
+]
+
+[tasks.udev]
+description = "Install udev rules for the CH572D's ROM bootloader and the bridge; runs sudo, once per machine"
+run = [
+    "sudo install -m 644 70-fsp-ch572.rules /etc/udev/rules.d/",
+    "sudo udevadm control --reload-rules",
+    "sudo udevadm trigger",
+]

@@ -2,7 +2,7 @@
 # `mise run udev`.  The number must stay below 73: logind applies the
 # uaccess tag in 73-seat-late.rules.
 
-# WCH ROM bootloader (both vendor IDs it enumerates with), used by wchisp.
+# WCH ROM bootloader (both vendor IDs it enumerates with), used by isp.py and wchisp.
 SUBSYSTEM=="usb", ATTRS{idVendor}=="4348", ATTRS{idProduct}=="55e0", MODE="0660", GROUP="plugdev", TAG+="uaccess"
 SUBSYSTEM=="usb", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55e0", MODE="0660", GROUP="plugdev", TAG+="uaccess"
 

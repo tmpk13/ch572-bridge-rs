@@ -161,7 +161,7 @@ def main():
                     help="seconds to wait for the bootloader (default 30)")
     args = ap.parse_args()
     base, img = elf_image(open(args.elf, "rb").read())
-    print("waiting %d s for the bootloader: plug in a blank chip, or run mise run ch572-boot"
+    print("waiting %d s for the bootloader: plug in a blank chip, or run mise run boot"
           % args.wait, flush=True)
     try:
         flash(Bootloader(wait_device(args.wait)), base, img)

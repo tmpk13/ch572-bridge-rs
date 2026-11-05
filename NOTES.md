@@ -1,27 +1,21 @@
-# CH572D USB bridge firmware
+# Notes
 
-The Forest Sensor Platform's CH572D (U9) sits between the USB-C port and
-the Wio-E5: USB D-/D+ on PA0/PA1, UART TX/RX on PA8/PA9 to the Wio-E5's
-USART2 (PA3/PA2), SWD on PA5 (SWCLK) and PA7 (SWDIO), WIO-RST on PA6.
-`ch572/` makes it a composite USB device: a CDC-ACM serial port bridged to
-that UART and a CMSIS-DAP v2 probe for the Wio-E5, so one cable gives
-probe-rs flashing/RTT and the serial link. Pin table: `ch572/src/hw.rs`.
-No BLE: that needs WCH's closed-source stack.
+The CH572D (U9) sits between the board's USB-C port and the Wio-E5: USB
+D-/D+ on PA0/PA1, UART TX/RX on PA8/PA9 to the Wio-E5's USART2
+(PA3/PA2), SWD on PA5 (SWCLK) and PA7 (SWDIO), WIO-RST on PA6. Pin
+table: `src/hw.rs`. No BLE: that needs WCH's closed-source stack.
 
 Sources: the datasheet translation in `~/ch572d/ch572d_en.md`, and WCH's
 EVT (github.com/openwch/ch570: `CH572SFR.h`, `CH57x_sys.c` SetSysClock,
-`USB/Device/COM`). `ch572/src/regs.rs` uses the SFR header's names; all
+`USB/Device/COM`). `src/regs.rs` uses the SFR header's names; all
 101 constants that have one were checked against it by script (0 mismatches);
 SysTick comes from `core_riscv.h` and datasheet 3.4.4.
 
 ## Build layout
 
-- Its own workspace and its own `.cargo/config.toml` (target
-  riscv32imc: the core is a QingKe V3C, RV32IMBC, no atomics). A nearer
-  config's `build.target` string overrides the parent's thumbv7em one, but
-  nothing can unset it, so host tests need `--target`: `mise run
-  ch572-test` derives the host triple. Its own `rust-toolchain.toml` too,
-  because the parent's lists only the thumbv7em target.
+- `.cargo/config.toml` sets `build.target` to riscv32imc (the core is a
+  QingKe V3C, RV32IMBC, no atomics), so host tests need an explicit
+  `--target`: `mise run test` derives the host triple.
 - No qingke-rt or PAC: `ch572_pac` 0.2 pins qingke-rt 0.5 while current is
   0.8, and a polled firmware needs no interrupt machinery. `main.rs` has a
   40-line startup modelled on WCH's `startup_CH572.S` (gp, sp, copy
@@ -120,13 +114,13 @@ RB_UIF_TRANSFER is cleared. Handling follows WCH's CH572 COM example:
 ## IDs, permissions, flashing
 
 - USB 1209:0001 is the pid.codes test ID, fine on the bench but not for
-  boards that leave it. `BRIDGE_SERIAL=<name> mise run ch572-flash` sets
+  boards that leave it. `BRIDGE_SERIAL=<name> mise run flash` sets
   the serial number to tell boards apart (default FSP-1).
 - probe-rs's udev rules cover neither that ID nor the WCH ROM
   bootloader's (4348:55e0, 1a86:55e0). `mise run udev` installs
-  `ch572/70-fsp-ch572.rules`, which covers all three.
+  `70-fsp-ch572.rules`, which covers all three.
 - Flashing is over USB through the ROM bootloader (BTVER 02.30) with
-  `ch572/isp.py`, not wchisp. The bootloader answers identify, config
+  `isp.py`, not wchisp. The bootloader answers identify, config
   read, the key exchange and erase, but every program and verify returns
   result 0xFE (0x35 for the first verify of a session) until the config
   registers are written (first board: in that session). wchisp never
@@ -151,7 +145,7 @@ RB_UIF_TRANSFER is cleared. Handling follows WCH's CH572 COM example:
 
 The board has no BOOT button for the CH572D (review M3), so:
 
-1. `mise run ch572-boot` (or any port open at 1200 baud then closed): the
+1. `mise run boot` (or any port open at 1200 baud then closed): the
    firmware detaches from USB and restarts through the datasheet's
    manual-BOOT path (RB_SOFTWARE_RESET with RB_WDOG_INT_EN set and
    R8_WDOG_COUNT in 128..191). That text names RB_ROM_CODE_WE = 1 and
@@ -206,7 +200,7 @@ fixed (pad 21 is on GND):
 
 The first board passed steps 1-4 (2026-11-04), after the faults in
 Forest-Sensor-Platform CH572D-BRINGUP.md and the flashing problem under
-"IDs, permissions, flashing"; the rest has not run on hardware yet. In
+"IDs, permissions, flashing"; step 5 has not run on hardware yet. In
 order:
 
 1. Power check before USB: 3.3 V into J4 (or J2 pin 3), nothing else
@@ -234,18 +228,20 @@ order:
    in: VDD33 at R41's chip end reads 3.2-3.4 V. Higher means the chip
    draws less than the ~1.13 mA that R41 feeds it (not running, or not
    grounded), and the LDO cannot sink the rest; unplug, it is over the
-   4.0 V absolute maximum. Then unplug, start `mise run ch572-flash`
+   4.0 V absolute maximum. Then unplug, start `mise run flash`
    (isp.py waits 30 s) and plug in: a blank chip's bootloader shows as
    1a86:55e0, and isp.py ends with "verified".
 4. `lsusb` shows 1209:0001; dmesg shows a ttyACM and no descriptor errors.
-   D10 lights once configured (blinks at 1 Hz until then).
-5. `probe-rs list` shows the probe. The Wio-E5 ships read-protected
-   (RDP 1); `mise run unlock` erases it (notes/build-flash.md; SW1 is the
-   NRST button if reset needs holding). Then `probe-rs info --chip
-   STM32WLE5JCIx` reads it (RM0461 gives DPIDR 0x5BA02477).
-6. `mise run bootloader`, `ADDRESS=2 mise run flash --features board`,
-   and RTT via `mise run attach`.
-7. Serial: the basestation built with `board`, `mise run data-relay -p
-   /dev/ttyACM0`.
-8. `mise run ch572-boot`, then `lsusb` for the WCH ISP device and
+   D10 lights once configured (blinks at 1 Hz until then). With the
+   bridge up, the Wio-E5's bring-up continues in long-range-radio-rs
+   (`~/forest/long-range-radio-rs`), notes/board.md, First bring-up.
+5. `mise run boot`, then `lsusb` for the WCH ISP device and
    `wchisp info`.
+
+## Open questions
+
+- Undoing the read-out protection that isp.py's config write turned on
+  (CFG_ROM_READ 0xFF, under "IDs, permissions, flashing"): the datasheet
+  (2.3.1, note to table 2-3) says it takes a full erase of the user area,
+  then writing CFG_ROM_READ = 0x3A. Untested: whether isp.py can do that
+  by erasing all 240 KB before its config write.
