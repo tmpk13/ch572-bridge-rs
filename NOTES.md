@@ -113,6 +113,15 @@ bridge.
   always sets bit 6, SWO streaming, even with no SWO (dap-rs 0.2
   `src/dap.rs`), so OpenOCD prints "SWO streaming trace supported".
   probe-rs looks for the SWO endpoint itself and is not misled.
+- No zero-length packet follows a DAP reply that fills all 64 bytes
+  (`write_packet` queues the one packet). probe-rs 0.31.0 reads v2
+  replies into max_packet_size + 1 bytes
+  (`src/probe/cmsisdap/commands/mod.rs:465-472`), so such a reply would
+  leave its read waiting out the timeout. Latent: probe-rs never gets
+  one, since it caps TransferBlock reads at (packet_size - 6) / 4 = 14
+  words, a 60-byte reply (`src/probe/cmsisdap/mod.rs:1088`), and
+  DAP_Transfer replies are 3 + 4n bytes. Another host, or a command whose
+  reply fills the packet, would hit it.
 - SWD and nRESET float unless a session holds them: J2 shares the lines.
   They are released on DAP_Disconnect and also when USB drops out of the
   configured state, since a killed probe-rs never disconnects. nRESET is
@@ -124,9 +133,10 @@ bridge.
 ## WAIT retries stall USB (open)
 
 While a DAP command runs the bridge polls no USB; only `SwdIo::service`
-runs (watchdog and UART). probe-rs 0.31 sends DAP_TransferConfigure with
-wait_retry 0xFFFF and gives each USB transfer 1 s (DEFAULT_USB_TIMEOUT in
-probe-rs `src/probe/cmsisdap/commands/mod.rs`), and dap-rs's default
+runs (watchdog and UART). probe-rs 0.31.0 (paths below are under its
+`src/probe/cmsisdap/`) sends DAP_TransferConfigure with wait_retry 0xFFFF
+(`mod.rs:857`) and gives every v2 bulk read and write 1 s
+(DEFAULT_USB_TIMEOUT, `commands/mod.rs:19`). dap-rs's default
 `Swd::read` and `Swd::write`, which `swd.rs` does not override, retry a
 WAIT that many times: seconds per exhausted transfer, bit-banged at
 ~1 MHz.
@@ -134,10 +144,14 @@ WAIT that many times: seconds per exhausted transfer, bit-banged at
 - Symptom: probe-rs fails with "Error handling CMSIS-DAP command
   Transfer / Timeout in USB communication" while the bridge still
   retries. The late replies (05 01 02: Transfer, ack WAIT) stay queued,
-  one in EP3 IN and one in `dap_response`, so the next session fails with
-  "Could not determine a suitable packet size" (probe-rs's drain() reads
-  with 1 ms timeouts). Recovery: read EP3 IN with a long timeout, or
-  replug.
+  one in EP3 IN and one in `dap_response`.
+- The next session then fails with "Could not determine a suitable packet
+  size". find_packet_size (`commands/mod.rs:307-334`) makes 16 DAP_Info
+  attempts with a 50 ms timeout each and retries only timeouts, so all
+  16 timed out: the bridge was still busy. The drain at probe open
+  (`mod.rs:136`) reads with 1 ms timeouts (`commands/mod.rs:268`), so it
+  misses a reply the bridge queues a moment later. Recovery: read EP3 IN
+  with a long timeout, or replug.
 - Seen once on the first board (2026-11-04), during probe-rs attach: a
   WAIT on the DP CTRL/STAT read right after ABORT, with the Wio-E5's core
   in lockup (RDP 1, DHCSR 0x03090000). It cleared on its own; later
